@@ -1,14 +1,17 @@
-//+build wireinject
+//go:build wireinject
+// +build wireinject
 
 package main
 
 import (
 	"github.com/evermos/boilerplate-go/configs"
-	"github.com/evermos/boilerplate-go/event"
-	fooBarBazEvent "github.com/evermos/boilerplate-go/event/domain/foobarbaz"
 	"github.com/evermos/boilerplate-go/event/producer"
 	"github.com/evermos/boilerplate-go/infras"
+	"github.com/evermos/boilerplate-go/internal/domain/cart"
 	"github.com/evermos/boilerplate-go/internal/domain/foobarbaz"
+	"github.com/evermos/boilerplate-go/internal/domain/order"
+	"github.com/evermos/boilerplate-go/internal/domain/product"
+	"github.com/evermos/boilerplate-go/internal/domain/user"
 	"github.com/evermos/boilerplate-go/internal/handlers"
 	"github.com/evermos/boilerplate-go/transport/http"
 	"github.com/evermos/boilerplate-go/transport/http/middleware"
@@ -39,9 +42,44 @@ var domainFooBarBaz = wire.NewSet(
 	wire.Bind(new(producer.Producer), new(*producer.SNSProducer)),
 )
 
+var domainUser = wire.NewSet(
+	user.ProvideUserServiceImpl,
+	wire.Bind(new(user.UserService), new(*user.UserServiceImpl)),
+	user.ProvideUserRepositoryMysql,
+	wire.Bind(new(user.UserRepository), new(*user.UserRepositoryMySQL)))
+
+var domainProduct = wire.NewSet(
+	//ProductService interface and implement
+	product.ProvideProductServiceImpl,
+	wire.Bind(new(product.ProductService), new(*product.ProductServiceImpl)),
+	//ProductRepository interface and implement
+	product.ProvideProductRepository,
+	wire.Bind(new(product.ProductRepository), new(*product.ProductRepositoryMySQL)),
+)
+var domainCart = wire.NewSet(
+	//CartService interface and implement
+	cart.ProvideCarServiceImpl,
+	wire.Bind(new(cart.CartService), new(*cart.CartServiceImpl)),
+	//CartRepository interface and implement
+	cart.ProvideCartRepositoryMySQL,
+	wire.Bind(new(cart.CartRepository), new(*cart.CartRepositoryMySQL)),
+)
+var domainOrder = wire.NewSet(
+	//OrderService interface and implement
+	order.ProvideOrderServiceImpl,
+	wire.Bind(new(order.OrderService), new(*order.OrderServiceImpl)),
+	//OrderRepository interface and implement
+	order.ProvideOrderRepositoryMySQL,
+	wire.Bind(new(order.OrderRepository), new(*order.OrderRepositoryMySQL)),
+)
+
 // Wiring for all domains.
 var domains = wire.NewSet(
 	domainFooBarBaz,
+	domainUser,
+	domainProduct,
+	domainCart,
+	domainOrder,
 )
 
 var authMiddleware = wire.NewSet(
@@ -50,16 +88,20 @@ var authMiddleware = wire.NewSet(
 
 // Wiring for HTTP routing.
 var routing = wire.NewSet(
-	wire.Struct(new(router.DomainHandlers), "FooBarBazHandler"),
+	wire.Struct(new(router.DomainHandlers), "FooBarBazHandler", "UserHandler", "ProductHandler", "CartHandler", "OrderHandler"),
 	handlers.ProvideFooBarBazHandler,
+	handlers.ProvideUserHandler,
+	handlers.ProvideProductHandler,
+	handlers.ProvideCartHandler,
+	handlers.ProvideOrderHandler,
 	router.ProvideRouter,
 )
 
 // Wiring for all domains event consumer.
-var evco = wire.NewSet(
-	wire.Struct(new(event.Consumers), "FooBarBaz"),
-	fooBarBazEvent.ProvideConsumerImpl,
-)
+//var evco = wire.NewSet(
+//	wire.Struct(new(event.Consumers), "FooBarBaz"),
+//	fooBarBazEvent.ProvideConsumerImpl,
+//)
 
 // Wiring for everything.
 func InitializeService() *http.HTTP {
@@ -80,16 +122,16 @@ func InitializeService() *http.HTTP {
 }
 
 // Wiring the event needs.
-func InitializeEvent() event.Consumers {
-	wire.Build(
-		// configurations
-		configurations,
-		// persistences
-		persistences,
-		// domains
-		domains,
-		// event consumer
-		evco)
-
-	return event.Consumers{}
-}
+//func InitializeEvent() event.Consumers {
+//	wire.Build(
+//		// configurations
+//		configurations,
+//		// persistences
+//		persistences,
+//		// domains
+//		domains,
+//		// event consumer
+//		evco)
+//
+//	return event.Consumers{}
+//}
