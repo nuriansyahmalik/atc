@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/evermos/boilerplate-go/configs"
 	"github.com/evermos/boilerplate-go/internal/domain/product"
-	"github.com/evermos/boilerplate-go/shared/failure"
 	"github.com/evermos/boilerplate-go/shared/logger"
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
@@ -15,7 +14,7 @@ import (
 )
 
 type CartService interface {
-	CheckoutCarts(userID uuid.UUID, cartItems []CartItems) (orders OrderResponse, err error)
+	CheckoutCarts(requestFormat CheckoutRequestFormat, userID uuid.UUID) (orders OrderResponse, err error)
 	AddItemToCart(requestFormat AddToCartRequestFormat, userID uuid.UUID) (cart Cart, err error)
 	ResolveCartByID(requestFormat GetCartRequestFormat, userID uuid.UUID) (cart Cart, err error)
 }
@@ -31,15 +30,13 @@ func ProvideCarServiceImpl(cartRepository CartRepository, productRepository prod
 }
 
 func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.UUID) (cart Cart, err error) {
-	productID := req.ProductID
-	quantity := req.Quantity
 
-	product, err := c.ProductRepository.ResolveByID(productID)
+	product, err := c.ProductRepository.ResolveByID(req.ProductID)
 	if err != nil {
 		return cart, err
 	}
 
-	if product.Stock < quantity {
+	if product.Stock < req.Quantity {
 		log.Info().Msg("insufficient stock")
 		return
 	}
@@ -54,18 +51,18 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 		if err != nil {
 			return cart, nil
 		}
-		cart = Cart{
+
+		if err := c.CartRepository.CreateCart(Cart{
 			CartID:    cartID,
 			UserID:    userID,
 			CreatedAt: time.Now(),
 			CreatedBy: userID,
-		}
-		if err := c.CartRepository.CreateCart(cart); err != nil {
+		}); err != nil {
 			return cart, nil
 		}
 	}
 
-	existingItem, err := c.CartRepository.ResolveCartItemByProduct(cart.CartID, productID)
+	existingItem, err := c.CartRepository.ResolveCartItemByProduct(cart.CartID, req.ProductID)
 	if err != nil {
 		return cart, nil
 	}
@@ -75,19 +72,18 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 		if err != nil {
 			return cart, nil
 		}
-		cartItem := CartItems{
+		if err := c.CartRepository.CreateCartItems(CartItems{
 			CartItemID: cartItemID,
 			CartID:     cart.CartID,
-			ProductID:  productID,
-			Quantity:   quantity,
+			ProductID:  req.ProductID,
+			Quantity:   req.Quantity,
 			CreatedAt:  time.Now(),
 			CreatedBy:  userID,
-		}
-		if err := c.CartRepository.CreateCartItems(cartItem); err != nil {
+		}); err != nil {
 			return cart, nil
 		}
 	} else {
-		existingItem[0].Quantity += quantity
+		existingItem[0].Quantity += req.Quantity
 		existingItem[0].CreatedAt = time.Now()
 		if err := c.CartRepository.UpdateCartItem(existingItem[0]); err != nil {
 			return cart, err
@@ -102,6 +98,7 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 	cart.AttachItems(items)
 	return
 }
+
 func (c CartServiceImpl) ResolveCartByID(requestFormat GetCartRequestFormat, userID uuid.UUID) (cart Cart, err error) {
 	cart, err = c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
@@ -119,45 +116,69 @@ func (c CartServiceImpl) ResolveCartByID(requestFormat GetCartRequestFormat, use
 
 	return
 }
-func (c *CartServiceImpl) CheckoutCarts(userID uuid.UUID) (OrderResponse, error) {
+
+func (c *CartServiceImpl) CheckoutCarts(requestFormat CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
+	// Resolve cart for the given userID
 	cart, err := c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return OrderResponse{}, err
 	}
 
+	// Check if the cart exists
 	if cart.CartID == uuid.Nil {
-		return OrderResponse{}, failure.InternalError(err)
+		return OrderResponse{}, fmt.Errorf("CartID not found for user %s", userID)
 	}
 
+	// Fetch cartItems based on product IDs in the request
 	cartItems, err := c.CartRepository.ResolveCartItemsByCartID(cart.CartID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return OrderResponse{}, err
 	}
 
+	// Check if the cartItems list is empty
 	if len(cartItems) == 0 {
-		return OrderResponse{}, fmt.Errorf("No items in the cart")
+		return OrderResponse{}, fmt.Errorf("No items in the cartItems list")
 	}
 
+	// Calculate totalAmount and items
 	totalAmount, items, err := c.calculateTotalAndItems(cartItems)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
+	// Create order for the user
 	order, err := c.createOrder(userID, totalAmount)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
-	if err := c.processOrderItemsAndStock(order, cartItems); err != nil {
-		return OrderResponse{}, err
+	// Check and update product stock and create order items
+	for _, cartItem := range cartItems {
+		product, err := c.ProductRepository.ResolveByID(cartItem.ProductID)
+		if err != nil {
+			return OrderResponse{}, err
+		}
+
+		if cartItem.Quantity > product.Stock {
+			return OrderResponse{}, fmt.Errorf("product '%s' is out of stock", product.Name)
+		}
+
+		totalAmount += float64(cartItem.Quantity) * product.Price
+
+		// Update product stock and create order item
+		if err := c.processOrderItemsAndStock(order, []CartItems{cartItem}); err != nil {
+			return OrderResponse{}, err
+		}
 	}
 
+	// Clear the cart after successful checkout
 	if err := c.CartRepository.ClearCart(cart.CartID); err != nil {
 		return OrderResponse{}, err
 	}
 
+	// Build and return the order response
 	return order.BuildOrderResponse(order, items), nil
 }
 
@@ -178,7 +199,6 @@ func (c *CartServiceImpl) createOrder(userID uuid.UUID, totalAmount float64) (Or
 	}
 	return order, nil
 }
-
 func (c *CartServiceImpl) calculateTotalAmount(cartItems []CartItems) (float64, error) {
 	var totalAmount float64
 	for _, cartItem := range cartItems {
@@ -190,7 +210,6 @@ func (c *CartServiceImpl) calculateTotalAmount(cartItems []CartItems) (float64, 
 	}
 	return totalAmount, nil
 }
-
 func (c *CartServiceImpl) checkProductStock(cartItems []CartItems) error {
 	for _, cartItem := range cartItems {
 		product, err := c.ProductRepository.ResolveByID(cartItem.ProductID)
@@ -203,7 +222,6 @@ func (c *CartServiceImpl) checkProductStock(cartItems []CartItems) error {
 	}
 	return nil
 }
-
 func (c *CartServiceImpl) processOrderItemsAndStock(order Order, cartItems []CartItems) error {
 	for _, cartItem := range cartItems {
 		product, err := c.ProductRepository.ResolveByID(cartItem.ProductID)
@@ -238,7 +256,6 @@ func (c *CartServiceImpl) processOrderItemsAndStock(order Order, cartItems []Car
 	}
 	return nil
 }
-
 func (c *CartServiceImpl) calculateTotalAndItems(cartItems []CartItems) (float64, []OrderItemInfo, error) {
 	var totalAmount float64
 	orderItemsInfo := make([]OrderItemInfo, 0)
@@ -253,8 +270,11 @@ func (c *CartServiceImpl) calculateTotalAndItems(cartItems []CartItems) (float64
 		totalAmount += itemTotal
 
 		orderItemInfo := OrderItemInfo{
-			ID:       cartItem.CartItemID,
-			Quantity: cartItem.Quantity,
+			ID:        cartItem.CartItemID,
+			Quantity:  cartItem.Quantity,
+			ProductID: cartItem.ProductID,
+			CreatedAt: cartItem.CreatedAt,
+			CreatedBy: cartItem.CreatedBy,
 			Product: ProductDetails{
 				ID:          product.ProductID,
 				Name:        product.Name,
@@ -263,6 +283,7 @@ func (c *CartServiceImpl) calculateTotalAndItems(cartItems []CartItems) (float64
 				Stock:       product.Stock,
 				CategoryID:  product.CategoryID,
 				CreatedAt:   product.CreatedAt,
+				CreatedBy:   product.CreatedBy,
 			},
 		}
 		orderItemsInfo = append(orderItemsInfo, orderItemInfo)
