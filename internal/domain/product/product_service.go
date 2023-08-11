@@ -3,6 +3,7 @@ package product
 //go:generate go run github.com/golang/mock/mockgen -source product_service.go -destination mock/product_service_mock.go -package product_mock
 
 import (
+	"fmt"
 	"github.com/evermos/boilerplate-go/configs"
 	"github.com/evermos/boilerplate-go/shared/failure"
 	"github.com/gofrs/uuid"
@@ -50,7 +51,8 @@ func (p *ProductServiceImpl) ResolveProduct(limit, page int) (product []Product,
 func (p *ProductServiceImpl) ResolveProductByCategory(limit, page int, categoryName string) (product []Product, err error) {
 	product, err = p.ProductRepository.ResolveProductByCategory(limit, page, categoryName)
 	if err != nil {
-		return nil, err
+
+		return nil, fmt.Errorf("data Tidak %s", err)
 	}
 	return
 }

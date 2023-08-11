@@ -29,6 +29,18 @@ func (h *UserHandler) Router(r chi.Router) {
 	})
 }
 
+// CreateUser create a new user
+// @Summary Create a new user
+// @Description this endpoint create a new user
+// @Tags user/user
+// @Security JWTAuthentication
+// @Param user body user.UserRequestFormat true "The User to be created."
+// @Produce json
+// @Success 201 {object} response.Base{data=user.UserResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 409 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/users/ [post]
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var requestFormat user.UserRequestFormat
@@ -50,6 +62,18 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	response.WithJSON(w, http.StatusCreated, user)
 }
 
+// Login logins a new user
+// @Summary Login a new user
+// @Description this endpoint create a new user
+// @Tags user/user
+// @Security JWTAuthentication
+// @Param user body user.LoginRequestFormat true "The user to be login."
+// @Produce json
+// @Success 200 {object} response.Base{data=user.UserResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 409 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/users/login [post]
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var requestFormat user.LoginRequestFormat

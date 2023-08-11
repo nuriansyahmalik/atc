@@ -22,13 +22,25 @@ func ProvideProductHandler(productService product.ProductService) ProductHandler
 
 func (h *ProductHandler) Router(r chi.Router) {
 	r.Route("/product", func(r chi.Router) {
-		r.Use(jwt.AuthMiddleware)
+		//r.Use(middleware.ValidateJWTMiddleware)
 		r.Post("/", h.CreateProduct)
 		r.Post("/category", h.CreateCategory)
 		r.Get("/", h.GetAllProduct)
 	})
 }
 
+// CreateProduct create a new product
+// @Summary Create a new product
+// @Description this endpoint create a new product
+// @Tags product/product
+// @Security JWTAuthentication
+// @Param user body product.ProductRequestFormat true "The Product to be created."
+// @Produce json
+// @Success 201 {object} response.Base{data=product.ProductResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 409 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/product/ [post]
 func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var requestFormat product.ProductRequestFormat
@@ -56,14 +68,30 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	response.WithJSON(w, http.StatusCreated, product)
 }
 
+// GetAllProduct resolves a Product by its ID.
+// @Summary Retrieve list of products
+// @Description This endpoint retrieves a list of products with optional filters.
+// @Tags product/product
+// @Security JWTAuthentication
+// @Param limit query int false "The number of products per page."
+// @Param page query int false "The page number."
+// @Param category query string false "Filter products by category."
+// @Produce json
+// @Success 200 {object} response.Base{data=product.ProductResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 404 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/product [get]
 func (h *ProductHandler) GetAllProduct(w http.ResponseWriter, r *http.Request) {
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil {
+		response.WithMessage(w, http.StatusBadRequest, "Missing Param Query Limit")
 		response.WithError(w, err)
 		return
 	}
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil {
+		response.WithMessage(w, http.StatusBadRequest, "Missing Param Query Page")
 		response.WithError(w, err)
 		return
 	}
@@ -73,12 +101,14 @@ func (h *ProductHandler) GetAllProduct(w http.ResponseWriter, r *http.Request) {
 	if categoryName == "" {
 		products, err = h.ProductService.ResolveProduct(limit, page-1)
 		if err != nil {
+			response.WithMessage(w, http.StatusBadRequest, "Missing Query Param")
 			response.WithError(w, err)
 			return
 		}
 	} else {
 		products, err = h.ProductService.ResolveProductByCategory(limit, page-1, categoryName)
 		if err != nil {
+			response.WithMessage(w, http.StatusBadRequest, "Missing Param Query / Wrong Category Name")
 			response.WithError(w, err)
 			return
 		}
@@ -86,6 +116,18 @@ func (h *ProductHandler) GetAllProduct(w http.ResponseWriter, r *http.Request) {
 	response.WithJSON(w, http.StatusOK, products)
 }
 
+// CreateCategory create a new product categories
+// @Summary Create a new product categories
+// @Description this endpoint create a new product categories
+// @Tags product/product
+// @Security JWTAuthentication
+// @Param user body product.CategoriesRequestFormat true "The Product Categories to be created."
+// @Produce json
+// @Success 201 {object} response.Base{data=product.CategoryResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 409 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/product/ [post]
 func (h *ProductHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var requestFormat product.CategoriesRequestFormat

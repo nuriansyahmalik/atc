@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/evermos/boilerplate-go/configs"
 	"github.com/evermos/boilerplate-go/internal/domain/product"
+	"github.com/evermos/boilerplate-go/shared/failure"
 	"github.com/evermos/boilerplate-go/shared/logger"
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
@@ -16,7 +17,7 @@ import (
 type CartService interface {
 	CheckoutCarts(requestFormat CheckoutRequestFormat, userID uuid.UUID) (orders OrderResponse, err error)
 	AddItemToCart(requestFormat AddToCartRequestFormat, userID uuid.UUID) (cart Cart, err error)
-	ResolveCartByID(requestFormat GetCartRequestFormat, userID uuid.UUID) (cart Cart, err error)
+	ResolveCartByID(cartID uuid.UUID, userID uuid.UUID) (cart Cart, err error)
 }
 
 type CartServiceImpl struct {
@@ -30,94 +31,63 @@ func ProvideCarServiceImpl(cartRepository CartRepository, productRepository prod
 }
 
 func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.UUID) (cart Cart, err error) {
-
 	product, err := c.ProductRepository.ResolveByID(req.ProductID)
 	if err != nil {
-		return cart, err
+		return
 	}
 
 	if product.Stock < req.Quantity {
-		log.Info().Msg("insufficient stock")
-		return
+		log.Info().Msg("Insufficient stock")
+		return cart, failure.InternalError(err)
 	}
 
-	cart, err = c.CartRepository.ResolveCartByID(userID)
-	if err != sql.ErrNoRows && err != nil {
-		logger.ErrorWithStack(err)
+	cart, err = c.getOrCreateCart(userID)
+	if err != nil {
 		return
-	}
-	if err == sql.ErrNoRows {
-		cartID, err := uuid.NewV4()
-		if err != nil {
-			return cart, nil
-		}
-
-		if err := c.CartRepository.CreateCart(Cart{
-			CartID:    cartID,
-			UserID:    userID,
-			CreatedAt: time.Now(),
-			CreatedBy: userID,
-		}); err != nil {
-			return cart, nil
-		}
 	}
 
 	existingItem, err := c.CartRepository.ResolveCartItemByProduct(cart.CartID, req.ProductID)
 	if err != nil {
-		return cart, nil
+		return
 	}
 
 	if existingItem == nil {
-		cartItemID, err := uuid.NewV4()
-		if err != nil {
-			return cart, nil
-		}
-		if err := c.CartRepository.CreateCartItems(CartItems{
-			CartItemID: cartItemID,
-			CartID:     cart.CartID,
-			ProductID:  req.ProductID,
-			Quantity:   req.Quantity,
-			CreatedAt:  time.Now(),
-			CreatedBy:  userID,
-		}); err != nil {
-			return cart, nil
-		}
+		err = c.createCartItem(cart.CartID, userID, req.ProductID, req.Quantity)
 	} else {
 		existingItem[0].Quantity += req.Quantity
 		existingItem[0].CreatedAt = time.Now()
-		if err := c.CartRepository.UpdateCartItem(existingItem[0]); err != nil {
-			return cart, err
-		}
+		err = c.CartRepository.UpdateCartItem(existingItem[0])
+	}
+
+	if err != nil {
+		return
 	}
 
 	items, err := c.CartRepository.ResolveCartItemsByCartID(cart.CartID)
 	if err != nil {
-		logger.ErrorWithStack(err)
 		return
 	}
 	cart.AttachItems(items)
 	return
 }
 
-func (c CartServiceImpl) ResolveCartByID(requestFormat GetCartRequestFormat, userID uuid.UUID) (cart Cart, err error) {
+func (c *CartServiceImpl) ResolveCartByID(cartID uuid.UUID, userID uuid.UUID) (cart Cart, err error) {
 	cart, err = c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return cart, err
 	}
-
-	cartItems, err := c.CartRepository.ResolveCartItemsByCartID(requestFormat.CartID)
+	cartItems, err := c.CartRepository.ResolveCartItemsByCartID(cartID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return cart, err
 	}
 
 	cart.AttachItems(cartItems)
-
 	return
 }
 
-func (c *CartServiceImpl) CheckoutCarts(requestFormat CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
+func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
 	// Resolve cart for the given userID
 	cart, err := c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
@@ -290,4 +260,38 @@ func (c *CartServiceImpl) calculateTotalAndItems(cartItems []CartItems) (float64
 	}
 
 	return totalAmount, orderItemsInfo, nil
+}
+func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err error) {
+	cart, err = c.CartRepository.ResolveCartByID(userID)
+	if err == sql.ErrNoRows {
+		cartID, err := uuid.NewV4()
+		if err != nil {
+			return cart, err
+		}
+		if err := c.CartRepository.CreateCart(Cart{
+			CartID:    cartID,
+			UserID:    userID,
+			CreatedAt: time.Now(),
+			CreatedBy: userID,
+		}); err != nil {
+			return cart, err
+		}
+	} else if err != nil {
+		return
+	}
+	return
+}
+func (c *CartServiceImpl) createCartItem(cartID, userID, productID uuid.UUID, quantity float64) (err error) {
+	cartItemID, err := uuid.NewV4()
+	if err != nil {
+		return err
+	}
+	return c.CartRepository.CreateCartItems(CartItems{
+		CartItemID: cartItemID,
+		CartID:     cartID,
+		ProductID:  productID,
+		Quantity:   quantity,
+		CreatedAt:  time.Now(),
+		CreatedBy:  userID,
+	})
 }

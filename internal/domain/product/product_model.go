@@ -2,6 +2,7 @@ package product
 
 import (
 	"encoding/json"
+	"github.com/evermos/boilerplate-go/shared"
 	"github.com/evermos/boilerplate-go/shared/nuuid"
 	"github.com/gofrs/uuid"
 	"github.com/guregu/null"
@@ -73,6 +74,12 @@ func (p Product) MarshalJSON() ([]byte, error) {
 
 func (pc ProductCategories) MarshalJSON() ([]byte, error) {
 	return json.Marshal(pc.ToResponseFormat())
+}
+
+// Validate validates the entity.
+func (p *Product) Validate() (err error) {
+	validator := shared.GetValidator()
+	return validator.Struct(p)
 }
 
 func (p Product) ProductRequestFormat(req ProductRequestFormat, userID uuid.UUID) (product Product, err error) {

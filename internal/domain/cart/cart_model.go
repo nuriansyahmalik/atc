@@ -2,6 +2,7 @@ package cart
 
 import (
 	"encoding/json"
+	"github.com/evermos/boilerplate-go/shared"
 	"github.com/evermos/boilerplate-go/shared/nuuid"
 	"github.com/gofrs/uuid"
 	"github.com/guregu/null"
@@ -65,11 +66,8 @@ type (
 		ProductID uuid.UUID `json:"productID"`
 		Quantity  float64   `json:"quantity"`
 	}
-	GetCartRequestFormat struct {
-		CartID uuid.UUID `json:"cartID"`
-	}
-	CheckoutRequest struct {
-		Items []CartItems
+	CheckoutRequestFormat struct {
+		Items []uuid.UUID `json:"items"`
 	}
 )
 
@@ -172,14 +170,17 @@ func (ci *CartItems) ToResponseFormat() CartItemsResponseFormat {
 	}
 }
 
-//Order
-
 func (o Order) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o.ToResponseFormat())
 }
 
 func (oi OrderItem) MarshalJSON() ([]byte, error) {
 	return json.Marshal(oi.ToResponseFormat())
+}
+
+func (c *Cart) Valitedate() (err error) {
+	validator := shared.GetValidator()
+	return validator.Struct(c)
 }
 
 func (o Order) ToResponseFormat() OrderResponseFormat {
@@ -213,8 +214,7 @@ func (oi *OrderItem) ToResponseFormat() OrderItemResponseFormat {
 	}
 }
 
-//Makes OrderResponse
-
+// Makes OrderResponse
 type OrderResponse struct {
 	ID         uuid.UUID       `json:"id"`
 	TotalPrice float64         `json:"totalPrice"`
@@ -228,9 +228,8 @@ type OrderItemInfo struct {
 	ID        uuid.UUID      `json:"id"`
 	Quantity  float64        `json:"quantity"`
 	ProductID uuid.UUID      `json:"productId"`
-	OrderID   uuid.UUID      `json:"orderId"`
 	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	CreatedBy uuid.UUID      `json:"createdBy"`
 	Product   ProductDetails `json:"product"`
 }
 
@@ -251,6 +250,7 @@ func (o Order) BuildOrderResponse(order Order, items []OrderItemInfo) OrderRespo
 		TotalPrice: order.TotalAmount,
 		UserID:     order.UserID,
 		CreatedAt:  order.CreatedAt,
+		CreatedBy:  order.CreatedBy,
 		Items:      items,
 	}
 }
