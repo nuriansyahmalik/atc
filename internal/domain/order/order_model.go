@@ -38,9 +38,9 @@ type (
 
 type (
 	OrderResponseFormat struct {
-		OrderID     uuid.UUID
-		UserID      uuid.UUID
-		TotalAmount float64
+		OrderID     uuid.UUID                 `json:"orderID"`
+		UserID      uuid.UUID                 `json:"userID"`
+		TotalAmount float64                   `json:"totalAmount"`
 		CreatedAt   time.Time                 `json:"createdAt"`
 		CreatedBy   uuid.UUID                 `json:"createdBy"`
 		UpdatedAt   null.Time                 `json:"updatedAt,omitempty"`
@@ -49,11 +49,12 @@ type (
 		DeletedBy   *uuid.UUID                `json:"deletedBy,omitempty"`
 		Items       []OrderItemResponseFormat `json:"items"`
 	}
+
 	OrderItemResponseFormat struct {
-		OrderItemID uuid.UUID
-		OrderID     uuid.UUID
-		ProductID   uuid.UUID
-		Quantity    float64
+		OrderItemID uuid.UUID  `json:"orderItemID"`
+		OrderID     uuid.UUID  `json:"orderID"`
+		ProductID   uuid.UUID  `json:"productID"`
+		Quantity    float64    `json:"quantity"`
 		CreatedAt   time.Time  `json:"createdAt"`
 		CreatedBy   uuid.UUID  `json:"createdBy"`
 		UpdatedAt   null.Time  `json:"updatedAt,omitempty"`
@@ -62,26 +63,28 @@ type (
 		DeletedBy   *uuid.UUID `json:"deletedBy,omitempty"`
 	}
 	OrderResponse struct {
-		ID         uuid.UUID       `json:"id"`
+		ID         uuid.UUID       `json:"order_id"`
 		TotalPrice float64         `json:"totalPrice"`
 		UserID     uuid.UUID       `json:"userId"`
 		CreatedAt  time.Time       `json:"createdAt"`
 		CreatedBy  uuid.UUID       `json:"createdBy"`
 		Items      []OrderItemInfo `json:"items"`
 	}
-
 	OrderItemInfo struct {
-		ID        uuid.UUID      `json:"id"`
-		Quantity  float64        `json:"quantity"`
-		ProductID uuid.UUID      `json:"productId"`
-		OrderID   uuid.UUID      `json:"orderId"`
-		CreatedAt time.Time      `json:"createdAt"`
-		UpdatedAt time.Time      `json:"updatedAt"`
-		Product   ProductDetails `json:"product"`
+		OrderItemID uuid.UUID   `db:"order_item_id"`
+		OrderID     uuid.UUID   `db:"order_id"`
+		ProductID   uuid.UUID   `db:"product_id"`
+		Quantity    int         `db:"quantity"`
+		CreatedAt   time.Time   `db:"created_at"`
+		CreatedBy   uuid.UUID   `db:"created_by"`
+		UpdatedAt   null.Time   `db:"updated_at"`
+		UpdatedBy   nuuid.NUUID `db:"updated_by"`
+		DeletedAt   null.Time   `db:"deleted_at"`
+		DeletedBy   nuuid.NUUID `db:"deleted_by"`
 	}
 
 	ProductDetails struct {
-		ID          uuid.UUID `json:"id"`
+		ID          uuid.UUID `json:"product_id"`
 		Name        string    `json:"name"`
 		Description string    `json:"description"`
 		Price       float64   `json:"price"`
@@ -137,6 +140,7 @@ func (o Order) BuildOrderResponse(order Order, items []OrderItemInfo) OrderRespo
 		TotalPrice: order.TotalAmount,
 		UserID:     order.UserID,
 		CreatedAt:  order.CreatedAt,
+		CreatedBy:  order.CreatedBy,
 		Items:      items,
 	}
 }

@@ -3,8 +3,8 @@ package jwt
 import (
 	"context"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt"
 	"github.com/rs/zerolog/log"
 	"net/http"
 	"strings"
@@ -17,7 +17,7 @@ var (
 
 type Claims struct {
 	ID    uuid.UUID `json:"id"`
-	Email string    `json:"username"`
+	Email string    `json:"email"`
 	Role  string    `json:"role"`
 	jwt.StandardClaims
 }

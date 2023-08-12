@@ -88,14 +88,12 @@ func (c *CartServiceImpl) ResolveCartByID(cartID uuid.UUID, userID uuid.UUID) (c
 }
 
 func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
-	// Resolve cart for the given userID
 	cart, err := c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return OrderResponse{}, err
 	}
 
-	// Check if the cart exists
 	if cart.CartID == uuid.Nil {
 		return OrderResponse{}, fmt.Errorf("CartID not found for user %s", userID)
 	}
