@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/evermos/boilerplate-go/configs"
+	"github.com/evermos/boilerplate-go/internal/domain/discount"
 	"github.com/evermos/boilerplate-go/internal/domain/product"
 	"github.com/evermos/boilerplate-go/shared/failure"
 	"github.com/evermos/boilerplate-go/shared/logger"
@@ -21,13 +22,14 @@ type CartService interface {
 }
 
 type CartServiceImpl struct {
-	CartRepository    CartRepository
-	ProductRepository product.ProductRepository
-	Config            *configs.Config
+	CartRepository     CartRepository
+	ProductRepository  product.ProductRepository
+	DiscountRepository discount.DiscountRepository
+	Config             *configs.Config
 }
 
-func ProvideCarServiceImpl(cartRepository CartRepository, productRepository product.ProductRepository, config *configs.Config) *CartServiceImpl {
-	return &CartServiceImpl{CartRepository: cartRepository, ProductRepository: productRepository, Config: config}
+func ProvideCarServiceImpl(cartRepository CartRepository, productRepository product.ProductRepository, discountRepository discount.DiscountRepository, config *configs.Config) *CartServiceImpl {
+	return &CartServiceImpl{CartRepository: cartRepository, ProductRepository: productRepository, DiscountRepository: discountRepository, Config: config}
 }
 
 func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.UUID) (cart Cart, err error) {
@@ -43,6 +45,8 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 
 	cart, err = c.getOrCreateCart(userID)
 	if err != nil {
+		fmt.Println(cart.UserID)
+		log.Info().Msg("error disini 1")
 		return
 	}
 
@@ -70,7 +74,6 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 	cart.AttachItems(items)
 	return
 }
-
 func (c *CartServiceImpl) ResolveCartByID(cartID uuid.UUID, userID uuid.UUID) (cart Cart, err error) {
 	cart, err = c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
@@ -87,7 +90,7 @@ func (c *CartServiceImpl) ResolveCartByID(cartID uuid.UUID, userID uuid.UUID) (c
 	return
 }
 
-func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
+func (c *CartServiceImpl) CheckoutCarts(requestFormat CheckoutRequestFormat, userID uuid.UUID) (OrderResponse, error) {
 	cart, err := c.CartRepository.ResolveCartByID(userID)
 	if err != nil {
 		logger.ErrorWithStack(err)
@@ -98,31 +101,45 @@ func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUI
 		return OrderResponse{}, fmt.Errorf("CartID not found for user %s", userID)
 	}
 
-	// Fetch cartItems based on product IDs in the request
 	cartItems, err := c.CartRepository.ResolveCartItemsByCartID(cart.CartID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return OrderResponse{}, err
 	}
 
-	// Check if the cartItems list is empty
 	if len(cartItems) == 0 {
 		return OrderResponse{}, fmt.Errorf("No items in the cartItems list")
 	}
 
-	// Calculate totalAmount and items
 	totalAmount, items, err := c.calculateTotalAndItems(cartItems)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Create order for the user
+	var discountAmount float64
+	var discountID uuid.UUID
+	if requestFormat.DiscountCode != "" {
+		discount, err := c.DiscountRepository.ResolveByCode(requestFormat.DiscountCode)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Info().Msgf("Discount with code '%s' not found", requestFormat.DiscountCode)
+			} else {
+				logger.ErrorWithStack(err)
+				return OrderResponse{}, fmt.Errorf("error retrieving discount with code '%s': %w", requestFormat.DiscountCode, err)
+			}
+		} else {
+			discountAmount = calculateDiscountAmount(totalAmount, discount)
+			discountID = discount.ID
+		}
+	}
+
+	totalPriceAfterDiscount := totalAmount - discountAmount
+
 	order, err := c.createOrder(userID, totalAmount)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Check and update product stock and create order items
 	for _, cartItem := range cartItems {
 		product, err := c.ProductRepository.ResolveByID(cartItem.ProductID)
 		if err != nil {
@@ -135,19 +152,19 @@ func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUI
 
 		totalAmount += float64(cartItem.Quantity) * product.Price
 
-		// Update product stock and create order item
 		if err := c.processOrderItemsAndStock(order, []CartItems{cartItem}); err != nil {
 			return OrderResponse{}, err
 		}
 	}
 
-	// Clear the cart after successful checkout
 	if err := c.CartRepository.ClearCart(cart.CartID); err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Build and return the order response
-	return order.BuildOrderResponse(order, items), nil
+	orderResponse := order.BuildOrderResponse(order, items, discountAmount)
+	orderResponse.TotalPrice = totalPriceAfterDiscount
+	orderResponse.DiscountID = discountID
+	return orderResponse, nil
 }
 
 func (c *CartServiceImpl) createOrder(userID uuid.UUID, totalAmount float64) (Order, error) {
@@ -264,6 +281,7 @@ func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err erro
 	if err == sql.ErrNoRows {
 		cartID, err := uuid.NewV4()
 		if err != nil {
+			log.Info().Msg("error disni 2")
 			return cart, err
 		}
 		if err := c.CartRepository.CreateCart(Cart{
@@ -272,9 +290,11 @@ func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err erro
 			CreatedAt: time.Now(),
 			CreatedBy: userID,
 		}); err != nil {
+			log.Info().Msg("error disini 3")
 			return cart, err
 		}
 	} else if err != nil {
+		log.Info().Msg("error disini 4")
 		return
 	}
 	return

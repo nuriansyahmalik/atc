@@ -8,6 +8,7 @@ import (
 	"github.com/evermos/boilerplate-go/event/producer"
 	"github.com/evermos/boilerplate-go/infras"
 	"github.com/evermos/boilerplate-go/internal/domain/cart"
+	"github.com/evermos/boilerplate-go/internal/domain/discount"
 	"github.com/evermos/boilerplate-go/internal/domain/foobarbaz"
 	"github.com/evermos/boilerplate-go/internal/domain/order"
 	"github.com/evermos/boilerplate-go/internal/domain/product"
@@ -73,6 +74,13 @@ var domainOrder = wire.NewSet(
 	wire.Bind(new(order.OrderRepository), new(*order.OrderRepositoryMySQL)),
 )
 
+var domainDiscount = wire.NewSet(
+	discount.ProvideDiscountServiceImpl,
+	wire.Bind(new(discount.DiscountService), new(*discount.DiscountServiceImpl)),
+	discount.ProvideDiscountRepositoryMySQL,
+	wire.Bind(new(discount.DiscountRepository), new(*discount.DiscountRepositoryMySQL)),
+)
+
 // Wiring for all domains.
 var domains = wire.NewSet(
 	domainFooBarBaz,
@@ -80,6 +88,7 @@ var domains = wire.NewSet(
 	domainProduct,
 	domainCart,
 	domainOrder,
+	domainDiscount,
 )
 
 var authMiddleware = wire.NewSet(
@@ -88,12 +97,13 @@ var authMiddleware = wire.NewSet(
 
 // Wiring for HTTP routing.
 var routing = wire.NewSet(
-	wire.Struct(new(router.DomainHandlers), "FooBarBazHandler", "UserHandler", "ProductHandler", "CartHandler", "OrderHandler"),
+	wire.Struct(new(router.DomainHandlers), "FooBarBazHandler", "UserHandler", "ProductHandler", "CartHandler", "OrderHandler", "DiscountHandler"),
 	handlers.ProvideFooBarBazHandler,
 	handlers.ProvideUserHandler,
 	handlers.ProvideProductHandler,
 	handlers.ProvideCartHandler,
 	handlers.ProvideOrderHandler,
+	handlers.ProvideDiscountHandler,
 	router.ProvideRouter,
 )
 

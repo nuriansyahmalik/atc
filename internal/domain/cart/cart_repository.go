@@ -5,11 +5,9 @@ package cart
 import (
 	"database/sql"
 	"github.com/evermos/boilerplate-go/infras"
-	"github.com/evermos/boilerplate-go/shared/failure"
 	"github.com/evermos/boilerplate-go/shared/logger"
 	"github.com/gofrs/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -135,17 +133,6 @@ func ProvideCartRepositoryMySQL(db *infras.MySQLConn) *CartRepositoryMySQL {
 }
 
 func (c *CartRepositoryMySQL) CreateCart(cart Cart) (err error) {
-	exists, err := c.ExistsByID(cart.CartID)
-	if err != nil {
-		logger.ErrorWithStack(err)
-		return
-	}
-
-	if exists {
-		err = failure.Conflict("create", "carts", "already exists")
-		logger.ErrorWithStack(err)
-		return
-	}
 	return c.DB.WithTransaction(func(tx *sqlx.Tx, e chan error) {
 		if err := c.txCreateCart(tx, cart); err != nil {
 			e <- err
@@ -195,7 +182,7 @@ func (c *CartRepositoryMySQL) ClearCart(cartID uuid.UUID) (err error) {
 func (c *CartRepositoryMySQL) ExistsByID(id uuid.UUID) (exists bool, err error) {
 	err = c.DB.Read.Get(
 		&exists,
-		"SELECT COUNT(id) FROM carts WHERE carts.cart_id = ?",
+		"SELECT COUNT(cart_id) FROM carts WHERE carts.cart_id = ?",
 		id.String())
 	if err != nil {
 		logger.ErrorWithStack(err)
@@ -206,8 +193,6 @@ func (c *CartRepositoryMySQL) ResolveCartByID(userID uuid.UUID) (cart Cart, err 
 	err = c.DB.Read.Get(&cart, cartQueries.selectCarts+" WHERE c.user_id = ?", userID)
 	if err != nil && err == sql.ErrNoRows {
 		// err = failure.NotFound("cart")
-		log.Info().Msg("error solvecart")
-		logger.ErrorWithStack(err)
 		return
 	}
 	return
@@ -262,22 +247,16 @@ func (c *CartRepositoryMySQL) RemoveItemFromCart(cart CartItems) (err error) {
 func (c *CartRepositoryMySQL) txCreateCart(tx *sqlx.Tx, cart Cart) (err error) {
 	stmt, err := tx.PrepareNamed(cartQueries.insertCart)
 	if err != nil {
-		logger.ErrorWithStack(err)
-		return
+		return err
 	}
 	defer stmt.Close()
 
 	_, err = stmt.Exec(cart)
 	if err != nil {
-		tx.Rollback()
-		logger.ErrorWithStack(err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
 		return err
 	}
-	return
+
+	return nil
 }
 func (c *CartRepositoryMySQL) txCreateCartItems(tx *sqlx.Tx, cartItems CartItems) (err error) {
 	stmt, err := tx.PrepareNamed(cartQueries.insertCartItems)

@@ -16,7 +16,7 @@ var (
 		insertUsers string
 	}{
 		insertUsers: `
-			INSERT INTO users(
+			INSERT INTO users (
 				user_id,
 			    username,
 			    email,

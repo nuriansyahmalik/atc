@@ -2,6 +2,7 @@ package cart
 
 import (
 	"encoding/json"
+	"github.com/evermos/boilerplate-go/internal/domain/discount"
 	"github.com/evermos/boilerplate-go/shared"
 	"github.com/evermos/boilerplate-go/shared/nuuid"
 	"github.com/gofrs/uuid"
@@ -37,6 +38,7 @@ type (
 	Order struct {
 		OrderID     uuid.UUID   `db:"order_id"`
 		UserID      uuid.UUID   `db:"user_id"`
+		DiscountID  uuid.UUID   `db:"discount_id"`
 		TotalAmount float64     `db:"total_amount"`
 		CreatedAt   time.Time   `db:"created_at"`
 		CreatedBy   uuid.UUID   `db:"created_by"`
@@ -67,7 +69,8 @@ type (
 		Quantity  float64   `json:"quantity"`
 	}
 	CheckoutRequestFormat struct {
-		Items []uuid.UUID `json:"items"`
+		Items        []uuid.UUID `json:"items"`
+		DiscountCode string      `json:"discountCode,omitempty"`
 	}
 )
 
@@ -99,7 +102,7 @@ type (
 	OrderResponseFormat struct {
 		OrderID     uuid.UUID
 		UserID      uuid.UUID
-		TotalAmount float64
+		TotalAmount float64                   `json:"totalAmount,omitempty"`
 		CreatedAt   time.Time                 `json:"createdAt"`
 		CreatedBy   uuid.UUID                 `json:"createdBy"`
 		UpdatedAt   null.Time                 `json:"updatedAt,omitempty"`
@@ -216,12 +219,14 @@ func (oi *OrderItem) ToResponseFormat() OrderItemResponseFormat {
 
 // Makes OrderResponse
 type OrderResponse struct {
-	ID         uuid.UUID       `json:"id"`
-	TotalPrice float64         `json:"totalPrice"`
-	UserID     uuid.UUID       `json:"userId"`
-	CreatedAt  time.Time       `json:"createdAt"`
-	CreatedBy  uuid.UUID       `json:"createdBy"`
-	Items      []OrderItemInfo `json:"items"`
+	ID             uuid.UUID       `json:"id"`
+	TotalPrice     float64         `json:"totalPrice"`
+	DiscountAmount float64         `json:"discountAmount"`
+	UserID         uuid.UUID       `json:"userId"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	CreatedBy      uuid.UUID       `json:"createdBy"`
+	Items          []OrderItemInfo `json:"items"`
+	DiscountID     uuid.UUID       `json:"discountId"`
 }
 
 type OrderItemInfo struct {
@@ -244,13 +249,37 @@ type ProductDetails struct {
 	CreatedBy   uuid.UUID `json:"createdBy"`
 }
 
-func (o Order) BuildOrderResponse(order Order, items []OrderItemInfo) OrderResponse {
-	return OrderResponse{
-		ID:         order.OrderID,
-		TotalPrice: order.TotalAmount,
-		UserID:     order.UserID,
-		CreatedAt:  order.CreatedAt,
-		CreatedBy:  order.CreatedBy,
-		Items:      items,
+func (o Order) BuildOrderResponse(order Order, items []OrderItemInfo, discountAmount float64) OrderResponse {
+	orderResponse := OrderResponse{
+		ID:             order.OrderID,
+		TotalPrice:     order.TotalAmount - discountAmount,
+		DiscountAmount: discountAmount,
+		UserID:         order.UserID,
+		CreatedAt:      order.CreatedAt,
+		CreatedBy:      order.CreatedBy,
+		Items:          items,
 	}
+
+	if discountAmount == 0 {
+		orderResponse.DiscountAmount = 0
+		orderResponse.DiscountID = uuid.Nil
+	} else {
+		orderResponse.DiscountAmount = discountAmount
+	}
+
+	return orderResponse
+}
+
+func calculateDiscountAmount(totalAmount float64, discount discount.Discount) float64 {
+	if discount.Type == "percentage" {
+		return totalAmount * (discount.Price / 100)
+	} else if discount.Type == "fixed_amount" {
+		return discount.Price
+	}
+	return 0
+}
+
+type CheckoutRequestWithUserID struct {
+	UserID       uuid.UUID             `json:"userID"`
+	CheckoutData CheckoutRequestFormat `json:"checkoutData"`
 }
