@@ -98,31 +98,26 @@ func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUI
 		return OrderResponse{}, fmt.Errorf("CartID not found for user %s", userID)
 	}
 
-	// Fetch cartItems based on product IDs in the request
 	cartItems, err := c.CartRepository.ResolveCartItemsByCartID(cart.CartID)
 	if err != nil {
 		logger.ErrorWithStack(err)
 		return OrderResponse{}, err
 	}
 
-	// Check if the cartItems list is empty
 	if len(cartItems) == 0 {
 		return OrderResponse{}, fmt.Errorf("No items in the cartItems list")
 	}
 
-	// Calculate totalAmount and items
 	totalAmount, items, err := c.calculateTotalAndItems(cartItems)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Create order for the user
 	order, err := c.createOrder(userID, totalAmount)
 	if err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Check and update product stock and create order items
 	for _, cartItem := range cartItems {
 		product, err := c.ProductRepository.ResolveByID(cartItem.ProductID)
 		if err != nil {
@@ -135,18 +130,15 @@ func (c *CartServiceImpl) CheckoutCarts(_ CheckoutRequestFormat, userID uuid.UUI
 
 		totalAmount += float64(cartItem.Quantity) * product.Price
 
-		// Update product stock and create order item
 		if err := c.processOrderItemsAndStock(order, []CartItems{cartItem}); err != nil {
 			return OrderResponse{}, err
 		}
 	}
 
-	// Clear the cart after successful checkout
 	if err := c.CartRepository.ClearCart(cart.CartID); err != nil {
 		return OrderResponse{}, err
 	}
 
-	// Build and return the order response
 	return order.BuildOrderResponse(order, items), nil
 }
 
