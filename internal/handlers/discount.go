@@ -28,6 +28,18 @@ func (h *DiscountHandler) Router(r chi.Router) {
 	})
 }
 
+// CreateDiscount create a new discount
+// @Summary Create a new discount
+// @Description this endpoint create a new discount
+// @Tags discount/discount
+// @Security JWTAuthentication
+// @Param user body discount.DiscountRequestFormat true "The Product to be created."
+// @Produce json
+// @Success 201 {object} response.Base{data=discount.DiscountResponseFormat}
+// @Failure 400 {object} response.Base
+// @Failure 409 {object} response.Base
+// @Failure 500 {object} response.Base
+// @Router /v1/product/ [post]
 func (h *DiscountHandler) CreateDiscount(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var requestFormat discount.DiscountRequestFormat

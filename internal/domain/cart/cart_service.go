@@ -45,8 +45,6 @@ func (c *CartServiceImpl) AddItemToCart(req AddToCartRequestFormat, userID uuid.
 
 	cart, err = c.getOrCreateCart(userID)
 	if err != nil {
-		fmt.Println(cart.UserID)
-		log.Info().Msg("error disini 1")
 		return
 	}
 
@@ -278,10 +276,9 @@ func (c *CartServiceImpl) calculateTotalAndItems(cartItems []CartItems) (float64
 }
 func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err error) {
 	cart, err = c.CartRepository.ResolveCartByID(userID)
-	if err == sql.ErrNoRows {
+	if err == sql.ErrNoRows && err != nil {
 		cartID, err := uuid.NewV4()
 		if err != nil {
-			log.Info().Msg("error disni 2")
 			return cart, err
 		}
 		if err := c.CartRepository.CreateCart(Cart{
@@ -290,11 +287,9 @@ func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err erro
 			CreatedAt: time.Now(),
 			CreatedBy: userID,
 		}); err != nil {
-			log.Info().Msg("error disini 3")
 			return cart, err
 		}
 	} else if err != nil {
-		log.Info().Msg("error disini 4")
 		return
 	}
 	return
