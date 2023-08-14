@@ -132,6 +132,9 @@ func (c *CartServiceImpl) CheckoutCarts(requestFormat CheckoutRequestFormat, use
 	}
 
 	totalPriceAfterDiscount := totalAmount - discountAmount
+	if totalPriceAfterDiscount < 0 {
+		totalPriceAfterDiscount = 0
+	}
 
 	order, err := c.createOrder(userID, totalAmount)
 	if err != nil {
@@ -174,7 +177,6 @@ func (c *CartServiceImpl) createOrder(userID uuid.UUID, totalAmount float64) (Or
 		OrderID:     orderID,
 		UserID:      userID,
 		TotalAmount: totalAmount,
-		CreatedAt:   time.Now(),
 		CreatedBy:   userID,
 	}
 	if err := c.CartRepository.CreateOrder(order); err != nil {
@@ -231,7 +233,6 @@ func (c *CartServiceImpl) processOrderItemsAndStock(order Order, cartItems []Car
 			OrderID:     order.OrderID,
 			ProductID:   cartItem.ProductID,
 			Quantity:    cartItem.Quantity,
-			CreatedAt:   time.Now(),
 			CreatedBy:   order.CreatedBy,
 		}); err != nil {
 			return err
@@ -284,7 +285,6 @@ func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err erro
 		if err := c.CartRepository.CreateCart(Cart{
 			CartID:    cartID,
 			UserID:    userID,
-			CreatedAt: time.Now(),
 			CreatedBy: userID,
 		}); err != nil {
 			return cart, err
@@ -294,6 +294,7 @@ func (c *CartServiceImpl) getOrCreateCart(userID uuid.UUID) (cart Cart, err erro
 	}
 	return
 }
+
 func (c *CartServiceImpl) createCartItem(cartID, userID, productID uuid.UUID, quantity float64) (err error) {
 	cartItemID, err := uuid.NewV4()
 	if err != nil {
